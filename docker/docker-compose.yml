@@ -1,0 +1,27 @@
+# Containerized deployment of the paperless-mcp-rbac MCP server.
+# Copy .env.example to .env first, then run from the repo root:
+#   docker compose -f docker/docker-compose.yml up -d
+services:
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ghcr.io/fidonis/paperless-mcp-rbac:0.1.0
+    container_name: paperless-mcp-rbac-mcp
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Both sides read MCP_PORT from .env so a single variable change is enough.
+      - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,os,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:'+os.environ.get('MCP_PORT','8000')+'/health',timeout=3).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
