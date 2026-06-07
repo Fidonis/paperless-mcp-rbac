@@ -203,9 +203,40 @@ this server:
 - **Add to access token**: on
 
 The `preferred_username` claim is included in Keycloak access tokens by default.
-Username values must match between Keycloak and Paperless (`PAPERLESS_SOCIAL_ACCOUNT_GROUPS_SYNC`
-syncs group membership on interactive OIDC login; a first interactive login is required
-before the groups become active for a given user).
+
+## Paperless setup
+
+### Required environment variables
+
+Set these on the Paperless-ngx container (not on this server):
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `PAPERLESS_ENABLE_HTTP_REMOTE_USER` | `true` | Enable remote-user authentication |
+| `PAPERLESS_ENABLE_HTTP_REMOTE_USER_API` | `true` | Apply remote-user to API requests |
+| `PAPERLESS_HTTP_REMOTE_USER_HEADER_NAME` | `HTTP_X_PAPAIA_REMOTE_USER` | WSGI form of the wire header `X-Papaia-Remote-User` — must match `PAPERLESS_REMOTE_USER_HEADER` on this server |
+| `PAPERLESS_SOCIAL_ACCOUNT_GROUPS_SYNC` | `true` | Sync Keycloak group membership into Paperless on every OIDC login |
+| `OPENID_USERNAME_CLAIM` | `preferred_username` | Ensure Paperless uses `preferred_username` as the local account username — must match what this server sends in the remote-user header |
+
+### Username alignment
+
+This server sets `X-Papaia-Remote-User: <preferred_username>` on every Paperless
+request. Paperless looks up a local account by that exact string. For permissions
+and group membership to work correctly:
+
+- The Paperless account username must equal the Keycloak `preferred_username`.
+- Both sides must use `preferred_username` as the identifier, not email or `sub`.
+
+If the values differ, Paperless silently creates a second empty account for the
+header value — no error, but no documents visible and no group rights.
+
+### First interactive login
+
+`PAPERLESS_SOCIAL_ACCOUNT_GROUPS_SYNC` only runs during an interactive OIDC web
+login. Group membership is therefore not active on the first MCP call if the user
+has never logged into the Paperless web UI. Have each user complete one interactive
+Paperless login before using the MCP tools, so that Keycloak group assignments are
+reflected in Paperless permissions.
 
 ## Calling from an MCP client
 
