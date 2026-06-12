@@ -18,6 +18,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=1.10",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "respx>=0.21",
@@ -33,6 +34,13 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "RET", "SIM", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+disallow_untyped_defs = true
+no_implicit_optional = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
