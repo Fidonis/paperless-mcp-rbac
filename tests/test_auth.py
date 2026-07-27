@@ -64,13 +64,17 @@ def _make_token(
     *,
     sub: str = "user-sub",
     preferred_username: str | None = "alice",
-    aud: str = "mcp-paperless",
+    aud: str | list[str] | None = "mcp-paperless",
     iss: str = "https://keycloak.example.com/realms/test",
     exp_offset: int = 3600,
     kid: str = "test-key",
 ) -> str:
     now = int(time.time())
-    payload: dict = {"sub": sub, "aud": aud, "iss": iss, "iat": now, "exp": now + exp_offset}
+    payload: dict = {"sub": sub, "iss": iss, "iat": now, "exp": now + exp_offset}
+    # aud=None omits the claim entirely, mirroring a Keycloak access token
+    # issued without any audience mapper.
+    if aud is not None:
+        payload["aud"] = aud
     if preferred_username is not None:
         payload["preferred_username"] = preferred_username
     return jose_jwt.encode(payload, private_key_pem, algorithm="RS256", headers={"kid": kid})
@@ -227,6 +231,47 @@ async def test_validate_expired_token(signing_key_private, signing_key_public):
 async def test_validate_wrong_audience(signing_key_private, signing_key_public):
     issuer = "https://keycloak.example.com/realms/test"
     token = _make_token(signing_key_private, iss=issuer, aud="other-service")
+    validator = _make_validator(issuer)
+    await _patch_validator(validator, signing_key_public, issuer)
+
+    with pytest.raises(InvalidTokenError):
+        await validator.validate(token)
+
+
+@pytest.mark.asyncio
+async def test_validate_missing_audience_rejected(signing_key_private, signing_key_public):
+    """A token with no `aud` claim must be rejected.
+
+    python-jose skips audience validation entirely for such tokens, so without
+    an explicit check this would accept any token the issuer minted for any
+    client. Keycloak emits exactly this shape when no audience mapper is
+    configured on the calling client.
+    """
+    issuer = "https://keycloak.example.com/realms/test"
+    token = _make_token(signing_key_private, iss=issuer, aud=None)
+    validator = _make_validator(issuer)
+    await _patch_validator(validator, signing_key_public, issuer)
+
+    with pytest.raises(InvalidTokenError, match="aud"):
+        await validator.validate(token)
+
+
+@pytest.mark.asyncio
+async def test_validate_audience_list_containing_expected(signing_key_private, signing_key_public):
+    """Keycloak emits `aud` as an array once several audiences apply."""
+    issuer = "https://keycloak.example.com/realms/test"
+    token = _make_token(signing_key_private, iss=issuer, aud=["account", "mcp-paperless"])
+    validator = _make_validator(issuer)
+    await _patch_validator(validator, signing_key_public, issuer)
+
+    claims = await validator.validate(token)
+    assert claims.preferred_username == "alice"
+
+
+@pytest.mark.asyncio
+async def test_validate_audience_list_without_expected(signing_key_private, signing_key_public):
+    issuer = "https://keycloak.example.com/realms/test"
+    token = _make_token(signing_key_private, iss=issuer, aud=["account", "litellm"])
     validator = _make_validator(issuer)
     await _patch_validator(validator, signing_key_public, issuer)
 
