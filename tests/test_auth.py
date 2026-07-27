@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from fastmcp.exceptions import ToolError
 from jose import jwt as jose_jwt
 
 from auth.models import OIDCClaims
@@ -16,11 +17,9 @@ from auth.oidc import (
     _algorithm_for_key,
     _extract_claims,
 )
-from fastmcp.exceptions import ToolError
 from mcp_app.tools import _clamp_page_size
 from paperless.api import _handle_response
 from paperless.client import paperless_client
-
 
 # ---------------------------------------------------------------------------
 # Helpers: RSA test key pair (generated once per session via pytest fixture)
@@ -387,8 +386,9 @@ async def test_download_cap_enforced():
 
 @pytest.mark.asyncio
 async def test_upload_rejects_invalid_base64():
-    """upload_document in tools.py raises ToolError for non-base64 input."""
+    """Malformed base64 raises binascii.Error, which upload_document maps to ToolError."""
     import base64 as b64_mod
+    import binascii
 
-    with pytest.raises(Exception):
+    with pytest.raises(binascii.Error):
         b64_mod.b64decode("not-valid-base64!!!", validate=True)
