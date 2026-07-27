@@ -90,6 +90,8 @@ class OIDCValidator:
             logger.info("Token validation failed: %s", exc.__class__.__name__)
             raise InvalidTokenError("Token validation failed") from exc
 
+        _validate_audience(payload, self._audience)
+
         return _extract_claims(payload)
 
     async def _resolve_key(self, kid: str | None) -> dict[str, Any]:
@@ -190,6 +192,24 @@ def _algorithm_for_key(key: dict[str, Any]) -> str:
     if alg not in _ALLOWED_ALGS:
         raise InvalidTokenError(f"JWK algorithm not permitted: {alg!r}")
     return alg
+
+
+def _validate_audience(payload: dict[str, Any], expected: str) -> None:
+    """Enforce the `aud` claim, failing closed when it is absent.
+
+    python-jose does not validate the audience at all when the token carries no
+    `aud` claim: its `_validate_aud` returns early and the branch that would
+    raise for a missing claim is commented out upstream. Passing `verify_aud`
+    to `jwt.decode` therefore only rejects a *wrong* audience, never a missing
+    one -- which would accept any token minted by the trusted issuer for any
+    client, defeating the point of scoping this server to one audience.
+    """
+    aud = payload.get("aud")
+    if aud is None:
+        raise InvalidTokenError("Token missing required 'aud' claim")
+    audiences = aud if isinstance(aud, list) else [aud]
+    if expected not in audiences:
+        raise InvalidTokenError("Token audience mismatch")
 
 
 def _extract_claims(payload: dict[str, Any]) -> OIDCClaims:
